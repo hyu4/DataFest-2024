@@ -1,0 +1,83 @@
+---
+title: "graphs"
+author: "Helen Yuan -- 106145727"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+# Load stuff
+```{r}
+library(stringr)
+library(lubridate)
+library(hms)
+library(ggplot2)
+library(dplyr)
+library(randomForest)
+library(corrplot)
+
+setwd("~/Downloads/datafest/Random Sample of Data Files")
+big <- read.csv("big.csv")
+```
+
+# EOC as students progress through the books
+In general students' EOC scores get lower and lower as they progress through the 
+book. Each colored line represents one student.
+
+> levels(big$book)
+[1] "College / Advanced Statistics and Data Science (ABCD)"     
+[2] "College / Statistics and Data Science (ABC)"               
+[3] "High School / Advanced Statistics and Data Science I (ABC)"
+
+```{r}
+big |> ggplot(aes(x = ratio_correct, color = institution_id)) +
+  geom_boxplot()
+# Convert book column to factor
+big$book <- factor(big$book)
+big |> ggplot(aes(x = chapter_number, y = ratio_correct), group = student_id) +
+  geom_point(aes(color = student_id), show.legend = FALSE) +
+  geom_line(aes(color = student_id), show.legend = FALSE) # this is too cluttered
+
+big[as.numeric(big$book) == 1,] |> 
+  ggplot(aes(x = chapter_number, y = ratio_correct), group = student_id) +
+  geom_point(aes(color = student_id), show.legend = FALSE, alpha = 0.5) +
+  geom_line(aes(color = student_id), show.legend = FALSE, alpha = 0.5) 
+
+big |> group_by(book, chapter_number) |> summarize(ratio_correct = mean(ratio_correct, na.rm = TRUE)) |> ggplot(aes(x = chapter_number, y = ratio_correct, color = book)) +
+  geom_point(cex = 3) +
+  geom_line()
+```
+# Why are high schoolers scoring so low?
+Seems like they don't differ too much in time engaged/idle/off page or anything
+actually maybe they're just stupid
+
+```{r}
+# Remove outliers 
+big[big$n_attempt < 300,] |> group_by(book, student_id) |> summarize(n_attempt = mean(n_attempt, na.rm = TRUE), ratio_correct = mean(ratio_correct, na.rm = TRUE)) |> 
+  ggplot(aes(x = n_attempt, color = book)) +
+  geom_boxplot() +
+  theme(legend.position = "bottom")
+```
+Are students who start out struggling still struggling?
+
+```{r}
+big |> pivot_wider(id_cols = c(student_id), names_from = chapter_number, values_from = ratio_correct) |> 
+  ggplot(aes(x = `4`, y = `10`)) +
+  geom_point() # etc...
+```
+# Insights from media views
+```{r}
+big |> ggplot(aes(x = proportion_video, y = ratio_correct)) + 
+  geom_point(aes(color = book)) +
+  theme()
+pairs(~ratio_correct+off_page_long+idle_long+engaged, big)
+big[big$off_page_long < 1e+07,] |> ggplot(aes(x = off_page_long, y = ratio_correct)) +
+  geom_point(alpha = 0.25)
+
+# As chapters go on...
+big |> mutate(on_task_ratio = engaged/(off_page_brief+off_page_long)) |> 
+  filter(on_task_ratio < 3.318226) |> 
+  ggplot(aes(x = on_task_ratio, y = ratio_correct)) +
+  geom_point(aes(color = institution_id))
+
+summary(big$engaged/(big$off_page_brief+big$off_page_long)) # outliers at 3.318226
+```
